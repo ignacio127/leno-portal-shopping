@@ -1,5 +1,5 @@
 # Pantalla de Retiro — Guía operativa para el local
-### Sucursal Portal Shopping · LENO Hamburguesería
+### Sucursal Portal Shopping · LENO 
 
 Esta guía es para cualquier persona del local que necesite prender, usar o
 destrabar la Pantalla de Retiro (el TV que muestra los números de pedido listos
