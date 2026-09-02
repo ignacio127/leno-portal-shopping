@@ -291,30 +291,6 @@ delete from public.orders
 where estado = 'retirado' and ts_retirado < now() - interval '90 days';
 ```
 
-## Pendiente
-
-### Abiertos
-
-1. **Deploy del Panel de Control — carga de promos a Supabase Storage** (~45-60 min). Resuelve dos cosas de una: la autonomía de Diego y el bug histórico de `full_image: false` hardcodeado. Cambios: (a) reemplazar el manejador de `in-img` para que guarde el `File` sin convertirlo, más dos funciones nuevas — `compressImage(file, maxW)` con canvas → `toBlob` JPEG q0.85 a 960px de ancho, y `uploadPromoImage(file)` que sube a `sb.storage.from('promos').upload(path, blob, {contentType:'image/jpeg', cacheControl:'31536000', upsert:false})` con path `promo-<Date.now()>.jpg`; (b) en `submitPromo()`, usar esa URL y cambiar `full_image: false` por `document.getElementById('in-full').checked`; (c) agregar el checkbox "Imagen completa" al formulario, al lado de "Destacado". Antes hay que crear por SQL el bucket `promos` (público, `file_size_limit` 2 MB, mime types jpeg/png/webp) con políticas de `select` e `insert` — hoy `storage.buckets` está vacío. **Riesgo aceptado**: la política de `insert` es anónima como el resto del proyecto, así que cualquiera con la clave pública puede subir archivos; los límites de tamaño y tipo acotan el daño a "llenar el bucket de JPEGs". La alternativa (Edge Function con clave secreta) se descartó por costo de mantenimiento. **Por qué Storage y no el repo**: la respuesta de `promos` lleva una URL de ~90 caracteres y el navegador descarga la imagen una vez por dispositivo y la cachea, en lugar de una vez por consulta.
-2. **Avisarle a Diego** que hasta ese deploy no puede cargar promos con imagen desde el Panel — si lo intenta, el `insert` falla por la restricción `promos_no_base64`, y sin aviso previo va a parecer que rompió el sistema.
-3. ~~Verificar la caída de Egress post-fix del 17/08/2026~~ — superado por el incidente del 01/09/2026. **Verificación vigente**: mirar la barra del 02/09 en Reports → Usage → *Egress per day*. Esperado: menos de 50 MB. Entre 50 MB y 500 MB significa que hay otra fuente sin identificar; arriba de 1 GB, que quedó algo sin detectar.
-4. **Bajar la promo "Doble Cheeseburger 30% OFF" el 13/09/2026**, fecha en que vence. Nota de contenido para Marketing: las condiciones legales de ese arte están en un cuerpo tan chico que resultan ilegibles a los 489 px de ancho real del panel — en este soporte esa letra chica no cumple ninguna función.
-5. **Diseño visual de fondo de "Listo para retirar" / "En preparación"**: en exploración — se descartaron varias propuestas de estilo (tarjetas escaladas, contorno, insignia, tickets, tablero tipo aeropuerto, tipografía pura); todavía no hay una dirección aprobada. Esto es independiente de los escalones de tamaño (ver punto 2, ya implementado) — si algún día se cambia el estilo de la tarjeta, los mismos escalones se le aplican igual.
-6. Confirmar con Diego el proceso de actualización de contenido de publicidad (ver `guia_publicidad_diego.md`).
-7. Subir las fuentes reales de marca (opcional, ver arriba).
-8. Cartel/recordatorio físico de 3 pasos para cocina sobre cuándo y cómo tocar "Marcar listo".
-9. Evaluar extraer la librería de Supabase JS y el logo de marca a archivos aparte, cacheables por el navegador (detectado en la auditoría del 17/08/2026, ver Historial de cambios).
-10. **Sacar los `console.log` de diagnóstico de la Edge Function** (`FUDO_RAW_SAMPLE`, `FUDO_DIAG_SAMPLE`) una vez confirmado que el fix de `saleState` es estable — quedaron para debug, no deben quedar en producción indefinidamente.
-11. **Migrar el repo a una organización de LENO.** Corrección al registro anterior: la cuenta `ignacio127` **no es de un tercero**, es la del propio Ramiro — no hay dependencia de nadie externo ni riesgo de perder el acceso. El motivo real para migrar es otro: hoy toda la operación de la pantalla depende de una sola persona, que es simultáneamente Jefe de Operaciones, desarrollador, DBA y soporte. Mover el repo no resuelve eso por sí solo, pero es el primer paso para que un segundo par de manos pueda entrar el día que exista.
-12. **Confirmar que el bug de "pedidos resucitados" no vuelve a pasar** con el borrado automático ya sacado del todo (ver Historial de cambios, continuación 4) — probar durante un turno completo, no solo unos minutos.
-
-### Cerrados
-
-1. ~~Escalones de tamaño según cantidad de pedidos~~ — **implementado**: 1-3 pedidos tamaño normal, 4-6 ~65%, 7+ ~48% con resumen "+N más". Mismo estilo de tarjeta actual.
-2. ~~Verificar en vivo el detalle de productos desde Fudo~~ — **confirmado el 18/08/2026**: funcionaba mal por un filtro de `saleState` que excluía `CLOSED` (ver Historial de cambios). Ya corregido y confirmado con pedidos reales (#625, #614, etc. mostrando detalle real).
-3. ~~Correr la migración de `ts_retirado` y del `CHECK` de `estado`~~ — **hecho el 18/08/2026** (ver "Migraciones aplicadas" arriba).
-4. ~~Probar en vivo el flujo completo de "Deshacer retirado"~~ — **confirmado el 18/08/2026** en producción (capturas reales con la lista "Retirados recientes" y botón Deshacer funcionando).
-
 ## Seguridad — nota para quien retome esto
 
 Las políticas de acceso (RLS) de las tablas `orders` y `promos` en Supabase son abiertas (`using (true) with check (true)`) — cualquiera con la clave pública del proyecto puede leer y escribir. Es una decisión consciente: no hay datos sensibles de clientes en estas tablas. Si esto escala a más sucursales o se agregan datos sensibles, hay que revisar estas políticas antes de continuar.
