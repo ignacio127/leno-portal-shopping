@@ -18,7 +18,10 @@ Pantalla de retiro para clientes + panel de control para el local, en vivo en la
 ## Arquitectura
 
 - **Frontend**: HTML/CSS/JS plano, alojado en GitHub Pages. La librería de Supabase JS **está incluida directo en el archivo** (no se descarga de un CDN externo) — esto fue clave para que funcionara en hardware de red restringida.
-- **Backend**: Supabase (Postgres + Realtime). Proyecto `leno-portal-shopping`, región São Paulo (`sa-east-1`). Esquema de las tablas en `supabase_schema.sql`.
+- **Backend**: Supabase (Postgres + Realtime). Proyecto `leno-portal-shopping`, `project ref` `cvuzxwuwhinfcpltelmi`, región São Paulo (`sa-east-1`), plan Free. Esquema de las tablas en `supabase_schema.sql`.
+- **Propiedad del proyecto Supabase** (desde el 02/09/2026): el proyecto está en la organización **`lenofood`**, bajo la cuenta corporativa `lenooperativo@gmail.com`, cuya contraseña está guardada a nombre de LENO SRL. Antes estaba en la organización personal `ramirodev`. Se hizo con la **transferencia entre organizaciones** de Supabase, no con una migración de proyecto: el `project ref`, la URL, la clave publishable y los secrets de la Edge Function quedaron idénticos, así que **no hubo un solo cambio de código** (ver Historial de cambios). La cuenta `ignacio127` sigue siendo Owner de la organización — es la única persona que mantiene el sistema y quitarle el acceso dejaría al proyecto sin nadie que pueda operarlo.
+- **El repo de GitHub NO se movió** y sigue en `ignacio127`, por decisión explícita del 02/09/2026. Moverlo cambiaría la URL de GitHub Pages y obligaría a actualizar el favorito de la caja Android en el local, o sea una visita física, sin ningún beneficio a cambio.
+- **Sin backups automáticos.** El plan Free no los genera (`LAST BACKUP: No backups` en el panel). Si se corrompiera o se borrara la tabla `orders`, no hay de dónde restaurar. El costo real de perderla hoy es bajo — son pedidos del día, no datos de clientes ni montos — salvo por un punto: se perdería toda la serie histórica de tiempos que usa el KDS, que es el único registro de cómo se comporta la operación. Ver Pendiente.
 - **Integración con Fudo**: una Edge Function (`fudo-pedidos`, código en `fudo-pedidos-edge-function.ts`) actúa de proxy seguro — guarda el `apiKey`/`apiSecret` de Fudo como secrets de Supabase, nunca expuestos al navegador ni al repo. La Pantalla de Retiro consulta esa función **cada 8 segundos**, e importa los pedidos de Mostrador nuevos (usando `fudo_sale_id` como clave de deduplicación vía `upsert` + `ignoreDuplicates`). Desde el 17/08/2026, solo la vista de Pantalla de Retiro ejecuta este polling — el Panel de Control ya no lo necesita (ver Historial de cambios).
 - **Respaldo de sincronización general**: un `setInterval` propio de **60 segundos** (independiente del ciclo de 8s de Fudo, desde el 17/08/2026 — ver Historial de cambios) refresca `orders`/`promos` en cualquier vista, aunque no haya pedidos nuevos de Fudo. Cubre el caso de que la conexión de tiempo real falle silenciosamente en algún dispositivo puntual. En el uso normal, la sincronización entre dispositivos la hace Realtime de forma prácticamente instantánea (un par de segundos) — este respaldo es el peor escenario, no el mecanismo principal de sincronización.
 - **Detalle real de productos**: la función de Fudo trae también qué productos tiene cada pedido (`include=items.product`), y ese detalle se guarda en la columna `item` de cada pedido. Es una parte del código agregada sin haberse probado en vivo todavía con un pedido real — el parseo está blindado con try/catch y cae a un texto genérico ("Pedido de Mostrador") si la estructura no coincide con lo esperado, así que no debería romper nada aunque el detalle no llegue a resolverse bien la primera vez. **Pendiente: confirmar con un pedido real que el detalle se arma correctamente.**
@@ -71,6 +74,8 @@ Los umbrales salen de los datos reales de agosto de 2026: la mediana de preparac
 
 El repo es público, así que la URL es accesible para cualquiera que la conozca. Lleva `noindex` y no está enlazada desde ningún lado, pero **no es una página privada**. No contiene datos de clientes ni montos, solo tiempos de preparación. Si en algún momento hace falta control de acceso real, la vía es Cloudflare Access.
 
+**Decisión del 02/09/2026: ni la Pantalla de Retiro ni el KDS migran a Cloudflare.** El plan de Cloudflare Pages + Access es para `leno-insights`, que sí tiene datos de facturación en un repo público. Acá no aplica por dos motivos: la caja Android del local **no tiene sesión autenticada**, así que poner Access adelante dejaría la pantalla sin cargar y sin forma de loguearla desde el local; y no habría ahorro de Egress, porque las ~15.400 consultas diarias van a la API de Supabase, no a GitHub Pages — Cloudflare solo serviría el HTML y las imágenes, que ya son gratis.
+
 ### Pendiente
 
 - Alerta visual en el Panel de Control cuando un pedido pasa los 20 minutos en "preparando" (amarillo) y los 45 (rojo). Esto sí toca `index.html`. Es la intervención que corrige el problema — el tablero solo lo mide.
@@ -122,6 +127,45 @@ Hoy usa Anton (para títulos) y Montserrat (para texto) como reemplazo de las fu
 Si no se suben, no rompe nada — sigue funcionando con las fuentes de reemplazo.
 
 ## Historial de cambios
+
+### 02/09/2026 — El proyecto Supabase pasa a una cuenta de LENO (Ramiro)
+
+**Por qué.** Hasta ahora el proyecto vivía en una organización personal. El motivo del cambio no fue técnico ni de costos — ya estaba en plan Free y ahí sigue — sino de propiedad: que LENO SRL tenga las credenciales del sistema que corre en la sucursal todos los días.
+
+**Se descartó una idea previa:** mover el proyecto para "resetear" el contador de Egress. La cuota es por organización y por ciclo, así que técnicamente hubiera funcionado, pero es patear el problema en vez de resolverlo. Después del fix del 01/09 el consumo quedó en ~7 MB/día contra una cuota de 5 GB/mes, o sea al 0,2%. No hacía falta.
+
+**Cómo se hizo.** Con la **transferencia entre organizaciones** de Supabase (Settings → General → Transfer Project), no con una migración de proyecto. La diferencia es grande: la transferencia no toca la infraestructura, así que el `project ref`, la URL, la clave publishable y los secrets de la Edge Function quedaron idénticos. **Cero cambios de código** — no se tocó `index.html`, ni `kds.html`, ni el proxy de Fudo, ni la caja del local.
+
+La alternativa (crear un proyecto nuevo y migrar con dump/restore) hubiera cambiado la URL y la clave, obligando a editar los dos HTML, recrear las políticas RLS y la restricción `promos_no_base64`, y volver a cargar los secrets de Fudo. Sirve para cambiar de región o de versión mayor, no para esto.
+
+**Secuencia:**
+
+1. Cuenta `lenooperativo@gmail.com` y organización `lenofood`.
+2. Se borró un proyecto vacío creado por error en esa organización — el plan Free admite dos proyectos por organización y no convenía gastar uno de los dos lugares.
+3. Se renombró la organización de origen a `ramirodev`: las dos se llamaban igual y el desplegable de la transferencia mostraba dos entradas idénticas.
+4. Invitación a `ignacio127` como **Owner** de `lenofood` — es requisito ser miembro de la organización de destino para poder transferir.
+5. Transferencia, fuera del horario de servicio.
+
+**Verificación post-transferencia** (toda hecha, ninguna asumida):
+
+| Qué | Resultado |
+|---|---|
+| Estado del proyecto | Todos los servicios en Healthy |
+| Restricción `promos_no_base64` | Presente |
+| **Edge Function autenticando contra Fudo** | ✅ Pedidos de Mostrador entrando solos |
+| Egress | 7 MB en el día — 0,01 GB de 5 GB |
+
+El punto crítico era el tercero: es la única pieza con credenciales guardadas del lado de Supabase, y su modo de falla es engañoso — la pantalla carga perfecto pero dejan de entrar pedidos. Se verificó con pedidos reales, con el local operando.
+
+**Cierre del incidente de Egress del 01/09.** Los 7 MB/día medidos confirman la proyección: de 23.950 MB a 7 MB, una reducción del 99,97%.
+
+**Decisiones tomadas y descartadas en el mismo movimiento:**
+
+- **El repo de GitHub no se mueve.** Sigue en `ignacio127`. Moverlo cambiaría la URL de GitHub Pages y obligaría a una visita física al local para actualizar el favorito de la caja Android, sin beneficio a cambio.
+- **`ignacio127` no se saca del team.** Sacar al único técnico que mantiene el sistema no mejora la propiedad, que ya está resuelta con la cuenta corporativa — solo deja el proyecto sin nadie que pueda operarlo cómodamente.
+- **Ni la Pantalla de Retiro ni el KDS van a Cloudflare.** Ver la nota en la sección de Privacidad del KDS.
+
+**Lo que realmente cerró el tema** no fue la transferencia sino guardar la contraseña de `lenooperativo@gmail.com` a nombre de LENO SRL. Sin eso, el cambio hubiera sido nominal: mover la dependencia de una cuenta personal a otra cuenta personal.
 
 ### 01/09/2026 — Segundo incidente de Egress: una promo guardada en base64 (Ramiro)
 
@@ -290,6 +334,31 @@ Si alguna vez hace falta liberar espacio (por ejemplo, si esto escala a muchas s
 delete from public.orders
 where estado = 'retirado' and ts_retirado < now() - interval '90 days';
 ```
+
+## Pendiente
+
+### Abiertos
+
+1. **Backup periódico de la base.** El plan Free no genera backups automáticos y hoy no existe ninguna copia fuera de Supabase. Un `pg_dump` mensual guardado en Drive alcanza — cinco minutos, sin costo. Lo que se perdería sin esto no son los pedidos del día, sino la serie histórica de tiempos que alimenta el KDS.
+2. **Deploy del Panel de Control — carga de promos a Supabase Storage** (~45-60 min). Resuelve dos cosas de una: la autonomía de Diego y el bug histórico de `full_image: false` hardcodeado. Cambios: (a) reemplazar el manejador de `in-img` para que guarde el `File` sin convertirlo, más dos funciones nuevas — `compressImage(file, maxW)` con canvas → `toBlob` JPEG q0.85 a 960px de ancho, y `uploadPromoImage(file)` que sube a `sb.storage.from('promos').upload(path, blob, {contentType:'image/jpeg', cacheControl:'31536000', upsert:false})` con path `promo-<Date.now()>.jpg`; (b) en `submitPromo()`, usar esa URL y cambiar `full_image: false` por `document.getElementById('in-full').checked`; (c) agregar el checkbox "Imagen completa" al formulario, al lado de "Destacado". Antes hay que crear por SQL el bucket `promos` (público, `file_size_limit` 2 MB, mime types jpeg/png/webp) con políticas de `select` e `insert` — hoy `storage.buckets` está vacío. **Riesgo aceptado**: la política de `insert` es anónima como el resto del proyecto, así que cualquiera con la clave pública puede subir archivos; los límites de tamaño y tipo acotan el daño a "llenar el bucket de JPEGs". La alternativa (Edge Function con clave secreta) se descartó por costo de mantenimiento. **Por qué Storage y no el repo**: la respuesta de `promos` lleva una URL de ~90 caracteres y el navegador descarga la imagen una vez por dispositivo y la cachea, en lugar de una vez por consulta.
+3. **Avisarle a Diego** que hasta ese deploy no puede cargar promos con imagen desde el Panel — si lo intenta, el `insert` falla por la restricción `promos_no_base64`, y sin aviso previo va a parecer que rompió el sistema.
+4. ~~Verificar la caída de Egress post-fix del 17/08/2026~~ — superado por el incidente del 01/09/2026. **Verificación vigente**: mirar la barra del 02/09 en Reports → Usage → *Egress per day*. Esperado: menos de 50 MB. Entre 50 MB y 500 MB significa que hay otra fuente sin identificar; arriba de 1 GB, que quedó algo sin detectar.
+5. **Bajar la promo "Doble Cheeseburger 30% OFF" el 13/09/2026**, fecha en que vence. Nota de contenido para Marketing: las condiciones legales de ese arte están en un cuerpo tan chico que resultan ilegibles a los 489 px de ancho real del panel — en este soporte esa letra chica no cumple ninguna función.
+6. **Diseño visual de fondo de "Listo para retirar" / "En preparación"**: en exploración — se descartaron varias propuestas de estilo (tarjetas escaladas, contorno, insignia, tickets, tablero tipo aeropuerto, tipografía pura); todavía no hay una dirección aprobada. Esto es independiente de los escalones de tamaño (ver punto 2, ya implementado) — si algún día se cambia el estilo de la tarjeta, los mismos escalones se le aplican igual.
+7. Confirmar con Diego el proceso de actualización de contenido de publicidad (ver `guia_publicidad_diego.md`).
+8. Subir las fuentes reales de marca (opcional, ver arriba).
+9. Cartel/recordatorio físico de 3 pasos para cocina sobre cuándo y cómo tocar "Marcar listo".
+10. Evaluar extraer la librería de Supabase JS y el logo de marca a archivos aparte, cacheables por el navegador (detectado en la auditoría del 17/08/2026, ver Historial de cambios).
+11. **Sacar los `console.log` de diagnóstico de la Edge Function** (`FUDO_RAW_SAMPLE`, `FUDO_DIAG_SAMPLE`) una vez confirmado que el fix de `saleState` es estable — quedaron para debug, no deben quedar en producción indefinidamente.
+12. **Confirmar que el bug de "pedidos resucitados" no vuelve a pasar** con el borrado automático ya sacado del todo (ver Historial de cambios, continuación 4) — probar durante un turno completo, no solo unos minutos.
+
+### Cerrados
+
+1. ~~Escalones de tamaño según cantidad de pedidos~~ — **implementado**: 1-3 pedidos tamaño normal, 4-6 ~65%, 7+ ~48% con resumen "+N más". Mismo estilo de tarjeta actual.
+2. ~~Verificar en vivo el detalle de productos desde Fudo~~ — **confirmado el 18/08/2026**: funcionaba mal por un filtro de `saleState` que excluía `CLOSED` (ver Historial de cambios). Ya corregido y confirmado con pedidos reales (#625, #614, etc. mostrando detalle real).
+3. ~~Correr la migración de `ts_retirado` y del `CHECK` de `estado`~~ — **hecho el 18/08/2026** (ver "Migraciones aplicadas" arriba).
+4. ~~Probar en vivo el flujo completo de "Deshacer retirado"~~ — **confirmado el 18/08/2026** en producción (capturas reales con la lista "Retirados recientes" y botón Deshacer funcionando).
+5. **Migrar el repo de GitHub a una organización de LENO** — **descartado el 02/09/2026**. El registro anterior decía que había que migrarlo "para no depender de una cuenta personal de un tercero": eso era un error, la cuenta `ignacio127` es la del propio Ramiro y no hay ningún tercero. La decisión tomada fue dejarlo donde está: moverlo cambiaría la URL de GitHub Pages y obligaría a una visita física al local para actualizar el favorito de la caja Android, sin beneficio a cambio. La propiedad quedó resuelta del lado de Supabase (ver Historial de cambios del 02/09). La dependencia real que queda no es de una cuenta sino de una persona: hoy una sola hace de Jefe de Operaciones, desarrollador, DBA y soporte.
 
 ## Seguridad — nota para quien retome esto
 
