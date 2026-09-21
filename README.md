@@ -5,7 +5,6 @@ Pantalla de retiro para clientes + panel de control para el local, en vivo en la
 ## Qué es esto
 
 - `index.html`: la app completa (pantalla de retiro + panel de control), en un solo archivo, sin build step.
-- `kds.html`: tablero interno de demoras de preparacion y retiro, para gerencia y encargados (ver seccion mas abajo). No lo usa el local ni lo ve el cliente.
 - Los datos viven en una base de datos real (Supabase) y se sincronizan **en tiempo real** entre cualquier dispositivo que tenga esta página abierta.
 - Los pedidos de Mostrador se importan **solos** desde Fudo — nadie los tipea a mano, salvo que se use el formulario manual como respaldo.
 
@@ -21,7 +20,7 @@ Pantalla de retiro para clientes + panel de control para el local, en vivo en la
 - **Backend**: Supabase (Postgres + Realtime). Proyecto `leno-portal-shopping`, `project ref` `cvuzxwuwhinfcpltelmi`, región São Paulo (`sa-east-1`), plan Free. Esquema de las tablas en `supabase_schema.sql`.
 - **Propiedad del proyecto Supabase** (desde el 02/09/2026): el proyecto está en la organización **`lenofood`**, bajo la cuenta corporativa `lenooperativo@gmail.com`, cuya contraseña está guardada a nombre de LENO SRL. Antes estaba en la organización personal `ramirodev`. Se hizo con la **transferencia entre organizaciones** de Supabase, no con una migración de proyecto: el `project ref`, la URL, la clave publishable y los secrets de la Edge Function quedaron idénticos, así que **no hubo un solo cambio de código** (ver Historial de cambios). La cuenta `ignacio127` sigue siendo Owner de la organización — es la única persona que mantiene el sistema y quitarle el acceso dejaría al proyecto sin nadie que pueda operarlo.
 - **El repo de GitHub NO se movió** y sigue en `ignacio127`, por decisión explícita del 02/09/2026. Moverlo cambiaría la URL de GitHub Pages y obligaría a actualizar el favorito de la caja Android en el local, o sea una visita física, sin ningún beneficio a cambio.
-- **Sin backups automáticos.** El plan Free no los genera (`LAST BACKUP: No backups` en el panel). Si se corrompiera o se borrara la tabla `orders`, no hay de dónde restaurar. El costo real de perderla hoy es bajo — son pedidos del día, no datos de clientes ni montos — salvo por un punto: se perdería toda la serie histórica de tiempos que usa el KDS, que es el único registro de cómo se comporta la operación. Ver Pendiente.
+- **Sin backups automáticos.** El plan Free no los genera (`LAST BACKUP: No backups` en el panel). Si se corrompiera o se borrara la tabla `orders`, no hay de dónde restaurar. El costo real de perderla hoy es bajo — son pedidos del día, no datos de clientes ni montos — salvo por un punto: se perdería toda la serie histórica de tiempos de preparación y retiro ya acumulada, el único registro de cómo se comporta la operación. Ver Pendiente.
 - **Integración con Fudo**: una Edge Function (`fudo-pedidos`, código en `fudo-pedidos-edge-function.ts`) actúa de proxy seguro — guarda el `apiKey`/`apiSecret` de Fudo como secrets de Supabase, nunca expuestos al navegador ni al repo. La Pantalla de Retiro consulta esa función **cada 8 segundos**, e importa los pedidos de Mostrador nuevos (usando `fudo_sale_id` como clave de deduplicación vía `upsert` + `ignoreDuplicates`). Desde el 17/08/2026, solo la vista de Pantalla de Retiro ejecuta este polling — el Panel de Control ya no lo necesita (ver Historial de cambios).
 - **Respaldo de sincronización general**: un `setInterval` propio de **60 segundos** (independiente del ciclo de 8s de Fudo, desde el 17/08/2026 — ver Historial de cambios) refresca `orders`/`promos` en cualquier vista, aunque no haya pedidos nuevos de Fudo. Cubre el caso de que la conexión de tiempo real falle silenciosamente en algún dispositivo puntual. En el uso normal, la sincronización entre dispositivos la hace Realtime de forma prácticamente instantánea (un par de segundos) — este respaldo es el peor escenario, no el mecanismo principal de sincronización.
 - **Detalle real de productos**: la función de Fudo trae también qué productos tiene cada pedido (`include=items.product`), y ese detalle se guarda en la columna `item` de cada pedido. Es una parte del código agregada sin haberse probado en vivo todavía con un pedido real — el parseo está blindado con try/catch y cae a un texto genérico ("Pedido de Mostrador") si la estructura no coincide con lo esperado, así que no debería romper nada aunque el detalle no llegue a resolverse bien la primera vez. **Pendiente: confirmar con un pedido real que el detalle se arma correctamente.**
@@ -31,57 +30,6 @@ Pantalla de retiro para clientes + panel de control para el local, en vivo en la
 - **Imágenes de promos — regla dura**: la columna `image_url` de la tabla `promos` guarda **siempre una ruta o una URL, nunca la imagen**. Los archivos viven en la carpeta `images/` del repo (o, cuando se implemente, en Supabase Storage). Guardar una imagen en base64 dentro de la fila cuesta ~24 GB de Egress por día — pasó el 31/08/2026, ver Historial de cambios. Desde el 01/09/2026 hay una restricción en la base (`promos_no_base64`) que hace fallar cualquier `insert` o `update` con un `data:` en ese campo. **No sacarla.** Especificación del arte: 1080x1440 px, que se sube optimizado a 960x1280 JPEG (~200 KB).
 - **Manejo de errores visible**: si algo falla al cargar, aparece una franja roja abajo de la pantalla con el mensaje de error — pensado para poder diagnosticar problemas en un dispositivo remoto sin acceso a herramientas de desarrollador, con solo una foto de la pantalla.
 - **Estados de un pedido** (desde el 18/08/2026 — ver Historial de cambios): `preparando` → `listo` → `retirado`. "Retirado" ya **no borra la fila** — queda visible en "Retirados recientes" (Panel de Control) durante 10 minutos, con un botón "Deshacer" que lo vuelve a `listo`. Pasado ese tiempo se limpia solo (`loadAll()` borra los retirados vencidos en cada corrida, sin necesitar un cron aparte).
-
-## KDS LENO — tablero de demoras (`kds.html`)
-
-Página separada, para uso interno de gerencia y encargados. **No la ve el cliente ni la carga el TV del local**: es un archivo independiente que no toca `index.html` ni el flujo de la Pantalla de Retiro.
-
-- **URL**: `https://ignacio127.github.io/leno-portal-shopping/kds.html`
-- **Qué mide**: los tiempos que ya se venían guardando en `orders` sin usarse — `created_at` → `ts_listo` (preparación) y `ts_listo` → `ts_retirado` (retiro).
-- **Cómo lee los datos**: `fetch` directo a la API REST de Supabase, trayendo solo cuatro columnas (`created_at`, `ts_listo`, `ts_retirado`, `estado`) y filtrando por fecha del lado del servidor. **Sin Realtime, sin polling, sin `select('*')`** — se carga solo cuando alguien toca "Actualizar" o cambia el período. Es una decisión deliberada después del incidente de Egress del 17/08/2026: esta página no puede generar tráfico de fondo.
-- **Períodos**: 7, 14 o 30 días, más un selector de fechas libre. El rango incluye el día final completo. Si una consulta llegara al tope de 8.000 filas, la página avisa que los números están calculados sobre una parte del período — no trunca en silencio.
-- **Sin dependencias externas**: los logos de LENO y de Fudo van embebidos en base64 dentro del archivo, así que funciona igual abierto localmente o desde GitHub Pages, sin depender de `images/`. Los gráficos son CSS y SVG nativo, sin librerías.
-- **Tipografías**: usa las mismas reglas `@font-face` que el resto del proyecto (Morganite y Argentum Sans desde `fonts/`), con Anton y Montserrat como respaldo hasta que se suban los archivos reales. Ver "Fuentes de marca" más arriba.
-
-### Las tres categorías de tiempo
-
-| Categoría | Umbral | Qué significa |
-|---|---|---|
-| A tiempo | hasta 15 min | Cumplió el compromiso de preparación |
-| Demorado | 15 a 45 min | Salió, pero tarde |
-| Marcado tarde | más de 45 min | Nadie lo marcó en su momento; ese cliente nunca vio su turno en la pantalla |
-
-Los "demorados" **incluyen** a los "marcados tarde" — son un subconjunto, no dos grupos separados. El tablero lo aclara en la tarjeta para que nadie sume los dos números.
-
-Un pedido con más de 45 minutos no significa que el cliente esperara todo ese tiempo: la hamburguesa se entregó igual, de viva voz en el mostrador. Lo que falló es que el pedido quedó colgado en "En preparación" hasta que alguien limpió la lista más tarde. La métrica mide el uso del Panel de Control, no la cocina.
-
-### Metas
-
-- Pedidos demorados: menos del 15%
-- Marcados tarde: menos del 2%
-- Media de preparación: debajo de 15 minutos
-- Pedidos retirados: arriba del 95%
-
-Los umbrales salen de los datos reales de agosto de 2026: la mediana de preparación se movía entre 8 y 15 minutos según la hora, con el 70% de los pedidos entrando dentro de los 15.
-
-### Lo que mostraron los primeros datos
-
-- **Los problemas de marcado aparecen en horas flojas, no en el pico.** Las bandas de 13–15h y 19–22h concentran el 76% del volumen y quedan por debajo del 2% de marcados tarde. Las bandas flojas (10–12h, 16–18h y 23–00h) son el 24% del volumen y generan el 80% de los fallos. La hipótesis es que en el rush hay presión —clientes preguntando, pantalla llena, más gente en caja— y con el local vacío no hay nada que obligue a marcar.
-- **La cocina también es más lenta cuando está vacía**: la mediana a las 16h ronda los 18 minutos contra 9 a las 20h.
-- **El botón "Marcar retirado" sí se usa**: más del 99% de los pedidos que llegan a "listo" se cierran a mano. El problema está solo en el tramo de preparación.
-
-### Privacidad
-
-El repo es público, así que la URL es accesible para cualquiera que la conozca. Lleva `noindex` y no está enlazada desde ningún lado, pero **no es una página privada**. No contiene datos de clientes ni montos, solo tiempos de preparación. Si en algún momento hace falta control de acceso real, la vía es Cloudflare Access.
-
-**Decisión del 02/09/2026: ni la Pantalla de Retiro ni el KDS migran a Cloudflare.** El plan de Cloudflare Pages + Access es para `leno-insights`, que sí tiene datos de facturación en un repo público. Acá no aplica por dos motivos: la caja Android del local **no tiene sesión autenticada**, así que poner Access adelante dejaría la pantalla sin cargar y sin forma de loguearla desde el local; y no habría ahorro de Egress, porque las ~15.400 consultas diarias van a la API de Supabase, no a GitHub Pages — Cloudflare solo serviría el HTML y las imágenes, que ya son gratis.
-
-### Pendiente
-
-- Alerta visual en el Panel de Control cuando un pedido pasa los 20 minutos en "preparando" (amarillo) y los 45 (rojo). Esto sí toca `index.html`. Es la intervención que corrige el problema — el tablero solo lo mide.
-- Aviso sonoro en el Panel de Control al cruzar los 20 minutos. Requiere confirmar antes si el Panel queda abierto en algún dispositivo del local durante el servicio; si no, el sonido no suena y hay que resolverlo de otra forma.
-- Tiempo de preparación configurable por franja horaria, en lugar de los 15 minutos fijos en el código.
-- Averiguar qué pasa entre las 17 y las 18h, la banda con peor marcado. Podría ser el cambio de turno.
 
 ## Por qué "Marcar listo" es un botón manual, a propósito
 
@@ -134,9 +82,9 @@ Si no se suben, no rompe nada — sigue funcionando con las fuentes de reemplazo
 
 **Se descartó una idea previa:** mover el proyecto para "resetear" el contador de Egress. La cuota es por organización y por ciclo, así que técnicamente hubiera funcionado, pero es patear el problema en vez de resolverlo. Después del fix del 01/09 el consumo quedó en ~7 MB/día contra una cuota de 5 GB/mes, o sea al 0,2%. No hacía falta.
 
-**Cómo se hizo.** Con la **transferencia entre organizaciones** de Supabase (Settings → General → Transfer Project), no con una migración de proyecto. La diferencia es grande: la transferencia no toca la infraestructura, así que el `project ref`, la URL, la clave publishable y los secrets de la Edge Function quedaron idénticos. **Cero cambios de código** — no se tocó `index.html`, ni `kds.html`, ni el proxy de Fudo, ni la caja del local.
+**Cómo se hizo.** Con la **transferencia entre organizaciones** de Supabase (Settings → General → Transfer Project), no con una migración de proyecto. La diferencia es grande: la transferencia no toca la infraestructura, así que el `project ref`, la URL, la clave publishable y los secrets de la Edge Function quedaron idénticos. **Cero cambios de código** — no se tocó `index.html`, ni el proxy de Fudo, ni la caja del local.
 
-La alternativa (crear un proyecto nuevo y migrar con dump/restore) hubiera cambiado la URL y la clave, obligando a editar los dos HTML, recrear las políticas RLS y la restricción `promos_no_base64`, y volver a cargar los secrets de Fudo. Sirve para cambiar de región o de versión mayor, no para esto.
+La alternativa (crear un proyecto nuevo y migrar con dump/restore) hubiera cambiado la URL y la clave, obligando a editar `index.html`, recrear las políticas RLS y la restricción `promos_no_base64`, y volver a cargar los secrets de Fudo. Sirve para cambiar de región o de versión mayor, no para esto.
 
 **Secuencia:**
 
@@ -163,7 +111,7 @@ El punto crítico era el tercero: es la única pieza con credenciales guardadas 
 
 - **El repo de GitHub no se mueve.** Sigue en `ignacio127`. Moverlo cambiaría la URL de GitHub Pages y obligaría a una visita física al local para actualizar el favorito de la caja Android, sin beneficio a cambio.
 - **`ignacio127` no se saca del team.** Sacar al único técnico que mantiene el sistema no mejora la propiedad, que ya está resuelta con la cuenta corporativa — solo deja el proyecto sin nadie que pueda operarlo cómodamente.
-- **Ni la Pantalla de Retiro ni el KDS van a Cloudflare.** Ver la nota en la sección de Privacidad del KDS.
+- **La Pantalla de Retiro no va a Cloudflare.** La caja Android del local no tiene sesión autenticada, así que poner Access adelante la dejaría sin cargar y sin forma de loguearla desde el local; tampoco habría ahorro de Egress, porque las consultas van a la API de Supabase, no a GitHub Pages — Cloudflare solo serviría el HTML y las imágenes, que ya son gratis.
 
 **Lo que realmente cerró el tema** no fue la transferencia sino guardar la contraseña de `lenooperativo@gmail.com` a nombre de LENO SRL. Sin eso, el cambio hubiera sido nominal: mover la dependencia de una cuenta personal a otra cuenta personal.
 
@@ -339,7 +287,7 @@ where estado = 'retirado' and ts_retirado < now() - interval '90 days';
 
 ### Abiertos
 
-1. **Backup periódico de la base.** El plan Free no genera backups automáticos y hoy no existe ninguna copia fuera de Supabase. Un `pg_dump` mensual guardado en Drive alcanza — cinco minutos, sin costo. Lo que se perdería sin esto no son los pedidos del día, sino la serie histórica de tiempos que alimenta el KDS.
+1. **Backup periódico de la base.** El plan Free no genera backups automáticos y hoy no existe ninguna copia fuera de Supabase. Un `pg_dump` mensual guardado en Drive alcanza — cinco minutos, sin costo. Lo que se perdería sin esto no son los pedidos del día, sino la serie histórica de tiempos de preparación y retiro ya acumulada.
 2. **Deploy del Panel de Control — carga de promos a Supabase Storage** (~45-60 min). Resuelve dos cosas de una: la autonomía de Diego y el bug histórico de `full_image: false` hardcodeado. Cambios: (a) reemplazar el manejador de `in-img` para que guarde el `File` sin convertirlo, más dos funciones nuevas — `compressImage(file, maxW)` con canvas → `toBlob` JPEG q0.85 a 960px de ancho, y `uploadPromoImage(file)` que sube a `sb.storage.from('promos').upload(path, blob, {contentType:'image/jpeg', cacheControl:'31536000', upsert:false})` con path `promo-<Date.now()>.jpg`; (b) en `submitPromo()`, usar esa URL y cambiar `full_image: false` por `document.getElementById('in-full').checked`; (c) agregar el checkbox "Imagen completa" al formulario, al lado de "Destacado". Antes hay que crear por SQL el bucket `promos` (público, `file_size_limit` 2 MB, mime types jpeg/png/webp) con políticas de `select` e `insert` — hoy `storage.buckets` está vacío. **Riesgo aceptado**: la política de `insert` es anónima como el resto del proyecto, así que cualquiera con la clave pública puede subir archivos; los límites de tamaño y tipo acotan el daño a "llenar el bucket de JPEGs". La alternativa (Edge Function con clave secreta) se descartó por costo de mantenimiento. **Por qué Storage y no el repo**: la respuesta de `promos` lleva una URL de ~90 caracteres y el navegador descarga la imagen una vez por dispositivo y la cachea, en lugar de una vez por consulta.
 3. **Avisarle a Diego** que hasta ese deploy no puede cargar promos con imagen desde el Panel — si lo intenta, el `insert` falla por la restricción `promos_no_base64`, y sin aviso previo va a parecer que rompió el sistema.
 4. ~~Verificar la caída de Egress post-fix del 17/08/2026~~ — superado por el incidente del 01/09/2026. **Verificación vigente**: mirar la barra del 02/09 en Reports → Usage → *Egress per day*. Esperado: menos de 50 MB. Entre 50 MB y 500 MB significa que hay otra fuente sin identificar; arriba de 1 GB, que quedó algo sin detectar.
@@ -351,6 +299,8 @@ where estado = 'retirado' and ts_retirado < now() - interval '90 days';
 10. Evaluar extraer la librería de Supabase JS y el logo de marca a archivos aparte, cacheables por el navegador (detectado en la auditoría del 17/08/2026, ver Historial de cambios).
 11. **Sacar los `console.log` de diagnóstico de la Edge Function** (`FUDO_RAW_SAMPLE`, `FUDO_DIAG_SAMPLE`) una vez confirmado que el fix de `saleState` es estable — quedaron para debug, no deben quedar en producción indefinidamente.
 12. **Confirmar que el bug de "pedidos resucitados" no vuelve a pasar** con el borrado automático ya sacado del todo (ver Historial de cambios, continuación 4) — probar durante un turno completo, no solo unos minutos.
+13. **Alerta visual en el Panel de Control** cuando un pedido pasa los 20 minutos en "preparando" (amarillo) y los 45 (rojo). Esto sí toca `index.html`.
+14. **Aviso sonoro en el Panel de Control** al cruzar los 20 minutos. Requiere confirmar antes si el Panel queda abierto en algún dispositivo del local durante el servicio; si no, el sonido no suena y hay que resolverlo de otra forma.
 
 ### Cerrados
 
