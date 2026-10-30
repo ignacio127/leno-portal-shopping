@@ -12,3 +12,8 @@ Este archivo es solo para agregar: no se edita ni se borra lo anterior. Cada ent
    - la imagen responde 200.
 
 **Próximo paso:** revisar el resultado de la medición del 30/10 y decidir si se hace el paso 2.
+
+## 30/10/2026 — Bridge (Grok Bot)
+1. Subidas del 28/10 sin nota previa: se reemplazó la imagen de la promo Bucket (commits 40e0b33 y a052eab).
+2. Es la imagen que usa la promo Bucket desde la corrección del 29/10 (punto 4 de la nota anterior).
+3. No se tocó código, datos ni la base.
