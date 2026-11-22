@@ -34,3 +34,4 @@ Las dos están activas y destacadas, y el carrusel rota entre ellas.
 - No se toca producción, ni claves ni datos sin el OK de Ramiro.
 - Los secretos van solo en GitHub Secrets o en los secrets de Supabase, nunca en el repo.
 - Para nombrar una imagen nueva, se usa el nombre exacto con que quedó en el repo, extensión incluida.
+- 22/11/2026: `fudo-pedidos` v11 quedó en `supabase/functions/fudo-pedidos/` y hay una variante (sin deploy) con timeout, log de error acotado a uno por minuto y 503 `fudo_no_disponible`. El 21/11 Fudo cayó ~70 min y la v11 devolvió 487×500 y 24×502 sin logs.

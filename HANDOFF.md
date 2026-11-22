@@ -17,3 +17,6 @@ Este archivo es solo para agregar: no se edita ni se borra lo anterior. Cada ent
 1. Subidas del 28/10 sin nota previa: se reemplazó la imagen de la promo Bucket (commits 40e0b33 y a052eab).
 2. Es la imagen que usa la promo Bucket desde la corrección del 29/10 (punto 4 de la nota anterior).
 3. No se tocó código, datos ni la base.
+
+## 22/11/2026 — fudo-pedidos en el repo, con timeout y 503 (sin deploy)
+El código v11 quedó versionado y se propuso, sin desplegar, timeout de login 8 s y ventas 10 s, un log JSON de error como máximo una vez por minuto, y respuesta 503 `fudo_no_disponible` en lugar del texto crudo de Fudo. La pantalla ya ignora cualquier status que no sea 200 (`pollFudoOrders`). Vuelta atrás: redeploy del código v11.
