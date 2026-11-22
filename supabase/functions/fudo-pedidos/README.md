@@ -6,7 +6,7 @@ La pantalla llama a la función sin JWT, así que se despliega con `--no-verify-
 
 ## Si Fudo no responde
 
-El login a `auth.fu.do` corta a los 5 segundos. La consulta de ventas a `api.fu.do` corta a los 10 segundos. Ante timeout, error de red, HTTP no exitoso o JSON inválido, la función responde **503**:
+El login a `auth.fu.do` corta a los 8 segundos. La consulta de ventas a `api.fu.do` corta a los 10 segundos. Ante timeout, error de red, HTTP no exitoso o JSON inválido, la función responde **503**:
 
 ```json
 { "error": "fudo_no_disponible", "paso": "ventas", "tipo": "timeout", "desde": "2026-11-22T12:00:00.000Z" }

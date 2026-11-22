@@ -19,4 +19,4 @@ Este archivo es solo para agregar: no se edita ni se borra lo anterior. Cada ent
 3. No se tocó código, datos ni la base.
 
 ## 22/11/2026 — fudo-pedidos en el repo, con timeout y 503 (sin deploy)
-El código v11 quedó versionado y se propuso, sin desplegar, timeout de login 5 s y ventas 10 s, un log JSON de error como máximo una vez por minuto, y respuesta 503 `fudo_no_disponible` en lugar del texto crudo de Fudo. La pantalla ya ignora cualquier status que no sea 200 (`pollFudoOrders`). Vuelta atrás: redeploy del código v11.
+El código v11 quedó versionado y se propuso, sin desplegar, timeout de login 8 s y ventas 10 s, un log JSON de error como máximo una vez por minuto, y respuesta 503 `fudo_no_disponible` en lugar del texto crudo de Fudo. La pantalla ya ignora cualquier status que no sea 200 (`pollFudoOrders`). Vuelta atrás: redeploy del código v11.

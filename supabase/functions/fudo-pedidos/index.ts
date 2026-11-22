@@ -13,7 +13,7 @@
 
 const FUDO_AUTH_URL_DEFAULT = "https://auth.fu.do/api";
 const FUDO_BASE_URL_DEFAULT = "https://api.fu.do/v1alpha1";
-const TIMEOUT_LOGIN_MS = 5_000;
+const TIMEOUT_LOGIN_MS = 8_000;
 const TIMEOUT_VENTAS_MS = 10_000;
 export const VENTANA_LOG_MS = 60_000;
 

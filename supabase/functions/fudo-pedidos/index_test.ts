@@ -410,7 +410,7 @@ Deno.test("ningún log ni respuesta contiene la clave de prueba", async () => {
   }
 });
 
-Deno.test("login que tarda 20s corta a los 5s e invalida el token", async () => {
+Deno.test("login que tarda 20s corta a los 8s e invalida el token", async () => {
   preparar();
   const control = controlDe("ok");
   const fudo = await fudoFalso(control);
@@ -426,7 +426,7 @@ Deno.test("login que tarda 20s corta a los 5s e invalida el token", async () => 
     assertEquals(res.json?.paso, "login");
     assertEquals(res.json?.tipo, "timeout");
     assertEquals(tokenEnCache(), null);
-    assert(elapsed >= 4_500 && elapsed < 9_000, `el login tardó ${elapsed} ms`);
+    assert(elapsed >= 7_000 && elapsed < 9_500, `el login tardó ${elapsed} ms`);
   } finally {
     await fudo.cerrar();
     revisarLogs();
